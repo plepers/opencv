@@ -46,6 +46,10 @@
 
 #include <Accelerate/Accelerate.h>
 
+#ifndef HAVE_ACCELERATE
+    #define HAVE_ACCELERATE 1
+#endif
+
 namespace cv
 {
 
@@ -581,7 +585,55 @@ static void GEMMSingleMul_toto( const float* a_data, size_t a_step,
               double alpha, double beta, int flags )
 {
 
-    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, a_size.height, d_size.width, a_size.width, (float)alpha, a_data, a_step, b_data, b_step, (float)beta, d_data, d_step );
+
+    char buf[1 << 16];
+
+    sprintf( buf, "GEMMSingleMul_toto ---- a_step : %i , b_step : %i , c_step : %i , d_step : %i , a_size : [%ix%i], d_size : [%ix%i], flags : %i",
+        a_step,
+        b_step,
+        c_step,
+        d_step,
+        a_size.width,
+        a_size.height,
+        d_size.width,
+        d_size.height,
+        flags
+        );
+    fprintf( stderr, "%s\n", buf );
+    fflush( stderr );
+
+
+
+
+
+
+
+
+
+
+
+
+    bool atrans = (flags & GEMM_1_T) != 0, 
+         btrans = (flags & GEMM_2_T) != 0;
+
+
+
+    cblas_sgemm(
+        CblasRowMajor,   //     enum CBLAS_ORDER Order,
+        atrans ? CblasTrans : CblasNoTrans,    //     enum CBLAS_TRANSPOSE TransA,      
+        btrans ? CblasTrans : CblasNoTrans,    //     enum CBLAS_TRANSPOSE TransB,      
+        a_size.height,   //     int M,      
+        d_size.width,    //     int N,      
+        a_size.width,    //     int K,      
+        (float)alpha,    //     float alpha,      
+        a_data,          //     float *A,  
+        a_size.width,    //     int lda,      
+        b_data,          //     float *B,  
+        d_size.width,    //     int ldb,      
+        (float)beta,     //     float beta,      
+        d_data,          //     float *C,  
+        d_size.height    //     int ldc      
+    );
     
     // GEMMSingleMul<float,double>(a_data, a_step, b_data, b_step, c_data,
     //                             c_step, d_data, d_step, a_size, d_size,
@@ -696,6 +748,102 @@ static void GEMMStore_64fc( const Complexd* c_data, size_t c_step,
     GEMMStore(c_data, c_step, d_buf, d_buf_step, d_data, d_step, d_size, alpha, beta, flags);
 }
 
+
+#ifdef HAVE_ACCELERATE
+
+
+static bool acc_cblas_gemm( InputArray matA, InputArray matB, double alpha,
+                      InputArray matC, double beta, OutputArray matD, int flags )
+{
+    Mat A = matA.getMat(), B = matB.getMat(), C = beta != 0 ? matC.getMat() : Mat();
+
+
+    int type = A.type(), esz = CV_ELEM_SIZE(type);
+    bool haveC = (C.data != 0 );
+    Size sizeA = A.size(), sizeB = B.size(), sizeC = haveC ? C.size() : Size(0, 0);
+    bool atrans = (flags & GEMM_1_T) != 0, btrans = (flags & GEMM_2_T) != 0, ctrans = (flags & GEMM_3_T) != 0;
+
+
+    CV_Assert( type == B.type() && (type == CV_32FC1 || type == CV_64FC1 || type == CV_32FC2 || type == CV_64FC2) );
+
+    if (atrans)
+        sizeA = Size(sizeA.height, sizeA.width);
+    if (btrans)
+        sizeB = Size(sizeB.height, sizeB.width);
+    if (haveC && ctrans)
+        sizeC = Size(sizeC.height, sizeC.width);
+
+    Size sizeD(sizeB.width, sizeA.height);
+
+    CV_Assert( (!haveC || matC.type() == type) );
+    CV_Assert( sizeA.width == sizeB.height && (!haveC || sizeC == sizeD) );
+
+    matD.create(sizeD, type);
+
+    Mat D = matD.getMat();
+    if (haveC)
+        ctrans ? transpose(matC, D) : matC.copyTo(D);
+    else
+        D.setTo(Scalar::all(0));
+
+    int M = sizeD.height, N = sizeD.width, K = sizeA.width;
+    int lda = (int)A.step / esz, ldb = (int)B.step / esz, ldc = (int)D.step / esz;
+   
+
+
+    CBLAS_TRANSPOSE transA = atrans ? CblasTrans : CblasNoTrans;
+    CBLAS_TRANSPOSE transB = btrans ? CblasTrans : CblasNoTrans;
+    CBLAS_ORDER order = CblasRowMajor;
+
+
+
+
+    if (type == CV_32FC1) {
+        cblas_sgemm(              order, transA, transB, M, N, K,
+                                  alpha, 
+                                  (float*)A.data, lda,
+                                  (float*)B.data, ldb,
+                                  beta, 
+                                  (float*)D.data, ldc
+                                  );
+    } else if (type == CV_64FC1) {
+        cblas_dgemm(              order, transA, transB, M, N, K,
+                                  alpha, 
+                                  (double*)A.data, lda,
+                                  (double*)B.data, ldb,
+                                  beta, 
+                                  (double*)D.data, ldc
+                                  );
+    }
+    // else if (type == CV_32FC2)
+    // {
+    //      cl_float2 alpha_2 = { { (cl_float)alpha, 0 } };
+    //      cl_float2 beta_2  = { { (cl_float)beta, 0 } };
+    //      status = clAmdBlasCgemmEx(order, transA, transB, M, N, K,
+    //                                alpha_2, (const cl_mem)A.handle(ACCESS_READ), offa, lda,
+    //                                (const cl_mem)B.handle(ACCESS_READ), offb, ldb,
+    //                                beta_2, (cl_mem)D.handle(ACCESS_RW), offc, ldc,
+    //                                1, &clq, 0, NULL, NULL);
+    // }
+    // else if (type == CV_64FC2)
+    // {
+    //     cl_double2 alpha_2 = { { alpha, 0 } };
+    //     cl_double2 beta_2  = { { beta, 0 } };
+    //     status = clAmdBlasZgemmEx(order, transA, transB, M, N, K,
+    //                               alpha_2, (const cl_mem)A.handle(ACCESS_READ), offa, lda,
+    //                               (const cl_mem)B.handle(ACCESS_READ), offb, ldb,
+    //                               beta_2, (cl_mem)D.handle(ACCESS_RW), offc, ldc,
+    //                               1, &clq, 0, NULL, NULL);
+    // }
+    else
+        CV_Error(Error::StsUnsupportedFormat, "cblas_gemm");
+
+    return 0;
+}
+
+#endif
+
+
 #ifdef HAVE_CLAMDBLAS
 
 static bool ocl_gemm( InputArray matA, InputArray matB, double alpha,
@@ -790,6 +938,13 @@ void cv::gemm( InputArray matA, InputArray matB, double alpha,
             ocl_gemm(matA, matB, alpha, matC, beta, _matD, flags))
 #endif
 
+
+#ifdef HAVE_ACCELERATE
+
+    acc_cblas_gemm( matA, matB, alpha, matC, beta, _matD, flags );
+    return;
+
+#endif   
     const int block_lin_size = 128;
     const int block_size = block_lin_size * block_lin_size;
 
