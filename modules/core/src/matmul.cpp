@@ -44,6 +44,8 @@
 #include "opencl_kernels.hpp"
 #include "opencv2/core/opencl/runtime/opencl_clamdblas.hpp"
 
+#include <Accelerate/Accelerate.h>
+
 namespace cv
 {
 
@@ -571,16 +573,19 @@ typedef void (*GEMMStoreFunc)( const void* src1, size_t step1,
                    const void* src2, size_t step2, void* dst, size_t dststep,
                    Size dstsize, double alpha, double beta, int flags );
 
-static void GEMMSingleMul_32f( const float* a_data, size_t a_step,
+static void GEMMSingleMul_toto( const float* a_data, size_t a_step,
               const float* b_data, size_t b_step,
               const float* c_data, size_t c_step,
               float* d_data, size_t d_step,
               Size a_size, Size d_size,
               double alpha, double beta, int flags )
 {
-    GEMMSingleMul<float,double>(a_data, a_step, b_data, b_step, c_data,
-                                c_step, d_data, d_step, a_size, d_size,
-                                alpha, beta, flags);
+
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, a_size.height, d_size.width, a_size.width, (float)alpha, a_data, a_step, b_data, b_step, (float)beta, d_data, d_step );
+    
+    // GEMMSingleMul<float,double>(a_data, a_step, b_data, b_step, c_data,
+    //                             c_step, d_data, d_step, a_size, d_size,
+    //                             alpha, beta, flags);
 }
 
 static void GEMMSingleMul_64f( const double* a_data, size_t a_step,
@@ -1106,7 +1111,7 @@ void cv::gemm( InputArray matA, InputArray matB, double alpha,
 
     if( type == CV_32FC1 )
     {
-        singleMulFunc = (GEMMSingleMulFunc)GEMMSingleMul_32f;
+        singleMulFunc = (GEMMSingleMulFunc)GEMMSingleMul_toto;
         blockMulFunc = (GEMMBlockMulFunc)GEMMBlockMul_32f;
         storeFunc = (GEMMStoreFunc)GEMMStore_32f;
     }
