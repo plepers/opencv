@@ -577,7 +577,7 @@ typedef void (*GEMMStoreFunc)( const void* src1, size_t step1,
                    const void* src2, size_t step2, void* dst, size_t dststep,
                    Size dstsize, double alpha, double beta, int flags );
 
-static void GEMMSingleMul_toto( const float* a_data, size_t a_step,
+static void GEMMSingleMul_32f( const float* a_data, size_t a_step,
               const float* b_data, size_t b_step,
               const float* c_data, size_t c_step,
               float* d_data, size_t d_step,
@@ -585,59 +585,10 @@ static void GEMMSingleMul_toto( const float* a_data, size_t a_step,
               double alpha, double beta, int flags )
 {
 
-
-    char buf[1 << 16];
-
-    sprintf( buf, "GEMMSingleMul_toto ---- a_step : %i , b_step : %i , c_step : %i , d_step : %i , a_size : [%ix%i], d_size : [%ix%i], flags : %i",
-        a_step,
-        b_step,
-        c_step,
-        d_step,
-        a_size.width,
-        a_size.height,
-        d_size.width,
-        d_size.height,
-        flags
-        );
-    fprintf( stderr, "%s\n", buf );
-    fflush( stderr );
-
-
-
-
-
-
-
-
-
-
-
-
-    bool atrans = (flags & GEMM_1_T) != 0, 
-         btrans = (flags & GEMM_2_T) != 0;
-
-
-
-    cblas_sgemm(
-        CblasRowMajor,   //     enum CBLAS_ORDER Order,
-        atrans ? CblasTrans : CblasNoTrans,    //     enum CBLAS_TRANSPOSE TransA,      
-        btrans ? CblasTrans : CblasNoTrans,    //     enum CBLAS_TRANSPOSE TransB,      
-        a_size.height,   //     int M,      
-        d_size.width,    //     int N,      
-        a_size.width,    //     int K,      
-        (float)alpha,    //     float alpha,      
-        a_data,          //     float *A,  
-        a_size.width,    //     int lda,      
-        b_data,          //     float *B,  
-        d_size.width,    //     int ldb,      
-        (float)beta,     //     float beta,      
-        d_data,          //     float *C,  
-        d_size.height    //     int ldc      
-    );
     
-    // GEMMSingleMul<float,double>(a_data, a_step, b_data, b_step, c_data,
-    //                             c_step, d_data, d_step, a_size, d_size,
-    //                             alpha, beta, flags);
+    GEMMSingleMul<float,double>(a_data, a_step, b_data, b_step, c_data,
+                                c_step, d_data, d_step, a_size, d_size,
+                                alpha, beta, flags);
 }
 
 static void GEMMSingleMul_64f( const double* a_data, size_t a_step,
@@ -1266,7 +1217,7 @@ void cv::gemm( InputArray matA, InputArray matB, double alpha,
 
     if( type == CV_32FC1 )
     {
-        singleMulFunc = (GEMMSingleMulFunc)GEMMSingleMul_toto;
+        singleMulFunc = (GEMMSingleMulFunc)GEMMSingleMul_32f;
         blockMulFunc = (GEMMBlockMulFunc)GEMMBlockMul_32f;
         storeFunc = (GEMMStoreFunc)GEMMStore_32f;
     }
