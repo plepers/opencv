@@ -46,9 +46,6 @@
 
 #include <Accelerate/Accelerate.h>
 
-#ifndef HAVE_ACCELERATE
-    #define HAVE_ACCELERATE 1
-#endif
 
 namespace cv
 {
@@ -700,7 +697,7 @@ static void GEMMStore_64fc( const Complexd* c_data, size_t c_step,
 }
 
 
-#ifdef HAVE_ACCELERATE
+#ifdef WITH_ACCELERATE
 
 
 static bool acc_cblas_gemm( InputArray matA, InputArray matB, double alpha,
@@ -890,7 +887,7 @@ void cv::gemm( InputArray matA, InputArray matB, double alpha,
 #endif
 
 
-#ifdef HAVE_ACCELERATE
+#ifdef WITH_ACCELERATE
 
     acc_cblas_gemm( matA, matB, alpha, matC, beta, _matD, flags );
     return;
